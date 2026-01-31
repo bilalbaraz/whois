@@ -1,0 +1,42 @@
+name: ci
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build
+        run: |
+          mkdir -p dist
+          go build -o dist/whois .
+          mkdir -p dist/darwin_amd64
+          GOOS=darwin GOARCH=amd64 go build -o dist/darwin_amd64/whois .
+          (cd dist/darwin_amd64 && zip -q ../whois_darwin_amd64.zip whois)
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: whois
+          path: dist/whois
+
+      - name: Create release and upload asset
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/whois
+            dist/whois_darwin_amd64.zip
