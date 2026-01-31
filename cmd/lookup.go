@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bufio"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -19,8 +20,17 @@ const (
 	lookupTimeout      = 10 * time.Second
 )
 
+var (
+	lookupRaw    bool
+	lookupJSON   bool
+	lookupServer string
+)
+
 func init() {
 	rootCmd.AddCommand(lookupCmd)
+	lookupCmd.Flags().BoolVar(&lookupRaw, "raw", false, "Print raw WHOIS response only")
+	lookupCmd.Flags().BoolVar(&lookupJSON, "json", false, "Print response as JSON")
+	lookupCmd.Flags().StringVar(&lookupServer, "server", "", "Manual WHOIS server (host only)")
 }
 
 var lookupCmd = &cobra.Command{
@@ -33,9 +43,16 @@ var lookupCmd = &cobra.Command{
 			return err
 		}
 
-		server, err := findWhoisServer(domain)
-		if err != nil {
-			return err
+		if lookupRaw && lookupJSON {
+			return errors.New("cannot use --raw and --json together")
+		}
+
+		server := lookupServer
+		if server == "" {
+			server, err = findWhoisServer(domain)
+			if err != nil {
+				return err
+			}
 		}
 
 		response, err := queryWhois(server, domain)
@@ -43,9 +60,63 @@ var lookupCmd = &cobra.Command{
 			return err
 		}
 
-		fmt.Fprint(cmd.OutOrStdout(), response)
+		if lookupRaw {
+			fmt.Fprint(cmd.OutOrStdout(), response)
+			return nil
+		}
+
+		if lookupJSON {
+			parsed := parseWhoisResponse(response)
+			if len(parsed) == 0 {
+				parsed = map[string][]string{
+					"raw": {response},
+				}
+			}
+			out := lookupJSONOutput{
+				Domain: domain,
+				Server: server,
+				Fields: parsed,
+			}
+			return writeJSON(cmd, out)
+		}
+
+		fmt.Fprintf(cmd.OutOrStdout(), "Server: %s\n\n%s", server, response)
 		return nil
 	},
+}
+
+type lookupJSONOutput struct {
+	Domain string              `json:"domain"`
+	Server string              `json:"server"`
+	Fields map[string][]string `json:"fields"`
+}
+
+func writeJSON(cmd *cobra.Command, value any) error {
+	encoder := json.NewEncoder(cmd.OutOrStdout())
+	encoder.SetIndent("", "  ")
+	return encoder.Encode(value)
+}
+
+func parseWhoisResponse(response string) map[string][]string {
+	fields := make(map[string][]string)
+	scanner := bufio.NewScanner(strings.NewReader(response))
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, "%") || strings.HasPrefix(line, "#") {
+			continue
+		}
+		parts := strings.SplitN(line, ":", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		key := strings.TrimSpace(parts[0])
+		value := strings.TrimSpace(parts[1])
+		if key == "" || value == "" {
+			continue
+		}
+		fields[key] = append(fields[key], value)
+	}
+	return fields
 }
 
 func normalizeDomain(input string) (string, error) {
