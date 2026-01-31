@@ -1,4 +1,4 @@
-# 🌐 whois — Developer-friendly Go CLI tool to query WHOIS information for domains
+# 🌐 whois — Fast Go CLI for WHOIS lookups
 
 A lightweight Go CLI that fetches WHOIS records for domains from the terminal, optimized for quick, scriptable lookups.
 
