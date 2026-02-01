@@ -5,7 +5,7 @@ A lightweight Go CLI that fetches WHOIS records for domains from the terminal, o
 ## Installation (Homebrew)
 ```bash
 brew tap bilalbaraz/tap
-brew install whois
+brew install bilalbaraz/tap/whois
 ```
 
 ## Usage
